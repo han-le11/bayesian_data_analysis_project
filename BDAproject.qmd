@@ -58,31 +58,44 @@ However, housing price prediction can be challenging. The relationships between 
 
 In this project, our goal is to predict the Espoo housing prices with linear and non-linear models. Regarding the linear model, we first investigate two variables—the year when the house was built and the house size. We also investigate with a non-linear model.
 
+The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the models and prior choices. Section 4 presents our analysis with the linear model. 
+
+
 # Description of the data and the analysis
 The housing price dataset is obtained from Asuntojen Hintatiedot @asunto, which can be translated into Price Information of Housing. This dataset can be viewed and downloaded from [here](https://drive.google.com/file/d/1VMD4fkEzAcP71FXoBq6P5i0Rme04AugG/view?usp=sharing). At the time of writing this report, to our knowledge, there are no existing analyses with this housing dataset.
 
-Before fitting the model to the dataset, we need to explore the dataset. The dataset has 901 rows. Each row contains information about a house. There are 10 parameters altogether. There are 8 empty cells in column \textit{Condition} and 30 in column \textit{LandOwnership}. However, these two parameters are not used for the Bayesian models.
+There are 900 observations in the dataset. Each row contains information about a house. In the original dataset, there are 10 variables. However, for the analysis, we add a variable called $Age = 2023 - ProductionYear$ to compute the age of the house using the year it was produced. 
 
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+
+Hide this in the pdf because it looks hard to follow.
 ```{r}
 housingData = read.csv('data/housing-data.csv', header=TRUE)
-
 housingData = housingData %>% 
   mutate(Age = 2023 - ProductionYear, 
          IncomeClass = round(Income, digits = -2)
          ) %>% 
   filter(Age <= 80)
+head(housingData, 5)
 ```
+:::
+::::
+
+There are 8 empty cells in column \textit{Condition} and 30 in column \textit{LandOwnership}. However, these two parameters are not used for the Bayesian models in this report.
 
 
+:::: {.content-hidden}
+::: {.callout-warning collapse=true}
 ```{r}
 # some plots of the raw data
-hist(housingData$Income)
 hist(housingData$IncomeClass)
+hist(housingData$Income)
 hist(housingData$Rooms)
-hist(housingData$Size)
 hist(housingData$Price)
-hist(housingData$Age)
+```
 
+```{r}
 ggplot(data = housingData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Age,Price, color = BuildingType))
@@ -101,6 +114,13 @@ ggplot(data = housingData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Size,Rooms, color = BuildingType), alpha = 0.5)
 ```
+:::
+::::
+
+```{r}
+hist(housingData$Size)
+hist(housingData$Age)
+```
 
 ```{r}
 # plots for each postal code
@@ -108,26 +128,60 @@ ggplot(data = housingData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Age, PricePerSquare, color = BuildingType)) + facet_wrap(~IncomeClass)
 ```
-# Description of models
+
+# Models and prior choices
 
 ## Linear model
+In the linear model, we choose a normal prior of $(\mu = 5000, 1500)$ for the housing size.
+
+## Non-linear model with hierarchy
+
+# Analysis with the linear model
+
+This section shows the code of our linear model with Gaussian noise and how the Markov chain Monte Carlo (MCMC) inference was run. We also shows the convergence diagnostic values for the linear model and their interpretation. In addition, we report posterior predictive checks.
+
+## MCMC inference
+
 ```{r}
-# Linear model with gaussian noise
-housefit = brm(Price ~ Size + Age,
-               data = housingData,
-               family = gaussian(),
-               prior = c(
-                 prior(normal(5000, 1500), class = b, coef = Size),
-                 prior(normal(-1000, 5000), class = b, coef = Age),
-                 prior(normal(100000, 30000), class = Intercept)
-                 ),
-               refresh = 0
-               )
+fit1 = brm(Price ~ Size + Age,
+           data = housingData,
+           family = gaussian(),
+           prior = c(
+             prior(normal(5000, 1500), class = b, coef = Size),
+             prior(normal(-1000, 5000), class = b, coef = Age),
+             prior(normal(100000, 30000), class = Intercept)
+             ),
+           refresh=0, 
+           show_exceptions = FALSE,
+           file="fit1.rds"
+           )
+```
 
 
-print(housefit) # parameter estimates & convergence statistics
-plot(housefit) # chain mixing & posterior distributions for parameters
-pp_check(housefit) # posterior predictive check visualization
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+
+```{r}
+saveRDS(fit1, file="fit1")
+```
+
+:::: 
+::: 
+
+## Convergence diagnostic 
+To obtain summaries and convergence diagnostic of the fitted linear model , we call the function `summary()`. 
+```{r}
+summary(fit1)
+```
+## Posterior predictive check
+
+By using function `plot()`, we can plot the MCMC chains as well as the posterior distributions for each parameter. 
+```{r}
+plot(fit1)
+``` 
+
+```{r}
+pp_check(fit1)
 ```
 
 ```{r}
@@ -137,51 +191,83 @@ ggplot(data = housingData %>% filter(
   BuildingType == 'kt')) + 
   geom_point(aes(Age,Price, color = Rooms)) + 
   geom_abline(intercept = 
-                fixef(housefit)[1] + 
-                fixef(housefit)[2]*mean(housingData$Size), 
+                fixef(fit1)[1] + 
+                fixef(fit1)[2]*mean(housingData$Size), 
               slope = 
-                fixef(housefit)[3])
+                fixef(fit1)[3])
 ```
 
-## Non-linear model with hierarchy
+# Non-linear model
 
+The structure of our analysis with the non-linear model is similar to that of the linear model. We first fit the model, then report convergence diagnostics
+
+## MCMC inference
 Non-linear models require the bf() around the model specification together with 'nl = TRUE'. The parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
-
 ```{r}
-housefit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
+fit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
                    b1 ~ 1, 
                    b2 ~ 1 + (1|PostalCode),
                    b3 ~ 1 + (1|PostalCode),
                    b4 ~ 1 + (1|PostalCode),
                    nl = TRUE
                    ),
-               data = housingData,
-               family = gaussian(),
-               prior = c(
-                 prior(normal(5000, 1500), nlpar = 'b1'),
-                 prior(normal(-1000, 5000), nlpar = 'b2'),
-                 prior(normal(0, 1000), nlpar = 'b3'),
-                 prior(normal(100000, 30000), nlpar = 'b4')
-                 ),
-               refresh = 0
-               )
+           data = housingData,
+           family = gaussian(),
+           prior = c(
+             prior(normal(5000, 1500), nlpar = 'b1'),
+             prior(normal(-1000, 5000), nlpar = 'b2'),
+             prior(normal(0, 1000), nlpar = 'b3'),
+             prior(normal(100000, 30000), nlpar = 'b4')
+             ),
+           refresh = 0,
+           show_exceptions = FALSE,
+           file="fit2.rds"
+           )
 ```
-To obtain summaries of the fitted model, we apply
+
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+
+Hide the summary in the pdf because it looks hard to follow.
+
 ```{r}
-print(housefit2)
-pp_check(housefit2)
-plot(conditional_effects(housefit2), points = TRUE)
+saveRDS(fit2, file="fit2")
+summary(fit2)
+```
+:::: 
+::: 
+
+## Convergence diagnostic 
+
+To obtain summaries of the fitted model, we again apply function `summary()`. 
+
+
+```{r}
+plot(conditional_effects(fit2), points = TRUE)
 ```
 
 
 ```{r}
-coefs = coef(housefit2)
+coefs = coef(fit2)
 ```
 
+## Posterior predictive check
+
 ```{r}
-vignette("brms_overview")
-vignette("brms_multilevel")
+pp_check(fit2)
 ```
+
+# Sensitivity analysis
+
+## Linear model
+
+## Non-linear model with hierarchy
+
+# Model comparison 
+
+# Discussion
+
+# Conclusion
 
 # References
 
