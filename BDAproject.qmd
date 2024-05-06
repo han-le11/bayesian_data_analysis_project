@@ -1,17 +1,43 @@
 ---
-title: "BDAproject"
-format: pdf
-editor: visual
+title: "Bayesian Data Analysis project"
+subtitle: "Housing price prediction"
+bibliography: ref.bib
+csl: ieee.csl
+author: anonymous # <-- hand in anonymously
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+  pdf:  
+    geometry:
+    - left=1cm,top=1cm,bottom=1cm,right=3cm
+    number-sections: true
+    code-annotations: none
+editor: source
+link-citations: true
 ---
 
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+
+## Setup
 ```{r}
-#library(aaltobda)
+#| label: imports
+library(aaltobda)
 library(bayesplot)
 library(dplyr)
 library(ggplot2)
 library(ggdist) # for stat_dotsinterval
 library(posterior)
 library(brms)
+# Globally specfiy cmdstan backend for brms
+options(brms.backend="cmdstanr")
+# Tell brms to cache results if possible
+options(brms.file_refit="on_change")
 
 # Set more readable themes with bigger font for plotting packages.
 ggplot2::theme_set(theme_minimal(base_size = 14))
@@ -19,20 +45,34 @@ bayesplot::bayesplot_theme_set(theme_minimal(base_size = 14))
 
 # This registers CmdStan as the backend for compiling cmdstan-chunks.
 # check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
-register_knitr_engine(override = FALSE)
-
+# register_knitr_engine(override = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 ```
+:::
+::::
+
+# Introduction
+In February 2024, the Pellervo Economic Research (PTT) of Finland forecasts that the housing prices in Espoo will increase by 1.7\% because of the influx of people moving to Espoo @ptt2024. Prediction of housing prices helps individuals and businesses make informed decisions about buying, selling, or investing in housing properties. For people planning to buy a house in Espoo, housing price prediction helps with financial planning and estimating the mortgage. For real estate professionals, economists, and policymakers, housing price prediction provides insights into factors that influence housing supply and demand, as well as urban development patterns. For example, housing price predictive models can help identify areas with affordable housing options, address housing inequality, and promote inclusive urban development. In addition, for banks, mortgage lenders, and other financial organizations, predicting housing prices is essential for assessing the risk associated with lending and investment activities.
+
+However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Factors such as number of rooms and property size can interact in complex ways to influence prices.
+
+In this project, our goal is to predict the Espoo housing prices with linear and non-linear models. Regarding the linear model, we first investigate two variables—the year when the house was built and the house size. We also investigate with a non-linear model.
+
+# Description of the data and the analysis
+The housing price dataset is obtained from Asuntojen Hintatiedot @asunto, which can be translated into Price Information of Housing. This dataset can be viewed and downloaded from [here](https://drive.google.com/file/d/1VMD4fkEzAcP71FXoBq6P5i0Rme04AugG/view?usp=sharing). At the time of writing this report, to our knowledge, there are no existing analyses with this housing dataset.
+
+Before fitting the model to the dataset, we need to explore the dataset. The dataset has 901 rows. Each row contains information about a house. There are 10 parameters altogether. There are 8 empty cells in column \textit{Condition} and 30 in column \textit{LandOwnership}. However, these two parameters are not used for the Bayesian models.
 
 ```{r}
-housingData = read.csv('~data/housing-data.csv', header=TRUE)
+housingData = read.csv('data/housing-data.csv', header=TRUE)
 
 housingData = housingData %>% 
   mutate(Age = 2023 - ProductionYear, 
          IncomeClass = round(Income, digits = -2)
          ) %>% 
   filter(Age <= 80)
-
 ```
+
 
 ```{r}
 # some plots of the raw data
@@ -68,7 +108,9 @@ ggplot(data = housingData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Age, PricePerSquare, color = BuildingType)) + facet_wrap(~IncomeClass)
 ```
+# Description of models
 
+## Linear model
 ```{r}
 # Linear model with gaussian noise
 housefit = brm(Price ~ Size + Age,
@@ -89,9 +131,6 @@ pp_check(housefit) # posterior predictive check visualization
 ```
 
 ```{r}
-
-# just my own visualization; can be skipped
-
 ggplot(data = housingData %>% filter(
   Rooms <= 4, 
   Age <= 80, 
@@ -102,13 +141,13 @@ ggplot(data = housingData %>% filter(
                 fixef(housefit)[2]*mean(housingData$Size), 
               slope = 
                 fixef(housefit)[3])
-
 ```
 
-```{r}
-# non-linear model with hierarchy. Non-linear models require the bf() around the model specification together with 'nl = TRUE'.
-# the parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
+## Non-linear model with hierarchy
 
+Non-linear models require the bf() around the model specification together with 'nl = TRUE'. The parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
+
+```{r}
 housefit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
                    b1 ~ 1, 
                    b2 ~ 1 + (1|PostalCode),
@@ -126,14 +165,14 @@ housefit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
                  ),
                refresh = 0
                )
-
+```
+To obtain summaries of the fitted model, we apply
+```{r}
 print(housefit2)
 pp_check(housefit2)
-```
-
-```{r}
 plot(conditional_effects(housefit2), points = TRUE)
 ```
+
 
 ```{r}
 coefs = coef(housefit2)
@@ -143,3 +182,8 @@ coefs = coef(housefit2)
 vignette("brms_overview")
 vignette("brms_multilevel")
 ```
+
+# References
+
+::: {#refs}
+:::
