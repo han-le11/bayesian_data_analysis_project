@@ -56,7 +56,7 @@ In February 2024, the Pellervo Economic Research (PTT) of Finland forecasts that
 
 However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Factors such as number of rooms and property size can interact in complex ways to influence prices.
 
-In this project, our goal is to predict the Espoo housing prices with linear and non-linear models. Regarding the linear model, we first investigate two variables—the year when the house was built and the house size. We also investigate with a non-linear model.
+In this project, our goal is to predict the Espoo housing prices with linear and non-linear models. Regarding the linear model, we first investigate two variables—the age and the size of the house. For the non-linear model, we also add hierarchy.
 
 The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the models and prior choices. Section 4 presents our analysis with the linear model. 
 
@@ -64,7 +64,7 @@ The structure of the report is as follows. Section 2 describes the data and the 
 # Description of the data and the analysis
 The housing price dataset is obtained from Asuntojen Hintatiedot @asunto, which can be translated into Price Information of Housing. This dataset can be viewed and downloaded from [here](https://drive.google.com/file/d/1VMD4fkEzAcP71FXoBq6P5i0Rme04AugG/view?usp=sharing). At the time of writing this report, to our knowledge, there are no existing analyses with this housing dataset.
 
-There are 900 observations in the dataset. Each row contains information about a house. In the original dataset, there are 10 variables. However, for the analysis, we add a variable called $Age = 2023 - ProductionYear$ to compute the age of the house using the year it was produced. 
+There are 900 observations in the dataset. Each row contains information about a house. In the original dataset, there are 10 variables. However, to investigate the effect , we add a variable called $Age = 2023 - ProductionYear$ to compute the age of the house using the year it was produced. 
 
 :::: {.content-hidden when-format="pdf"}
 ::: {.callout-warning collapse=true}
@@ -169,6 +169,10 @@ saveRDS(fit1, file="fit1")
 ::: 
 
 ## Convergence diagnostic 
+```{r}
+rhat(fit1)
+```
+
 To obtain summaries and convergence diagnostic of the fitted linear model , we call the function `summary()`. 
 ```{r}
 summary(fit1)
@@ -181,6 +185,7 @@ plot(fit1)
 ``` 
 
 ```{r}
+loo(fit1)
 pp_check(fit1)
 ```
 
@@ -197,9 +202,15 @@ ggplot(data = housingData %>% filter(
                 fixef(fit1)[3])
 ```
 
+## Sensitivity analysis
+
+Sensitivity analysis is conducted with respect to prior choices (i.e., checking whether the result changes a lot if prior is changed).
+
+
+
 # Non-linear model
 
-The structure of our analysis with the non-linear model is similar to that of the linear model. We first fit the model, then report convergence diagnostics
+The structure of our analysis with the non-linear model is similar to that of the linear model. We first fit the model, then report convergence diagnostics, posterior predictive checks, and 
 
 ## MCMC inference
 Non-linear models require the bf() around the model specification together with 'nl = TRUE'. The parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
@@ -254,14 +265,11 @@ coefs = coef(fit2)
 ## Posterior predictive check
 
 ```{r}
+loo(fit2)
 pp_check(fit2)
 ```
+## Sensitivity analysis
 
-# Sensitivity analysis
-
-## Linear model
-
-## Non-linear model with hierarchy
 
 # Model comparison 
 
