@@ -297,7 +297,6 @@ summary(fit2)
 
 To obtain summaries of the fitted model, we again apply function `summary()` in `brms` package. 
 
-
 ```{r}
 plot(brms::conditional_effects(fit2), points = TRUE)
 ```
