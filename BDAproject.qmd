@@ -34,6 +34,9 @@ library(ggplot2)
 library(ggdist) # for stat_dotsinterval
 library(posterior)
 library(brms)
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(dplyr)  
+library(cmdstanr) 
 # Globally specfiy cmdstan backend for brms
 options(brms.backend="cmdstanr")
 # Tell brms to cache results if possible
@@ -89,19 +92,19 @@ hist(HouseData$Price)
 ```
 
 ```{r}
-ggplot(data = HouseData %>% filter(
-  Rooms <= 2, 
-  Age <= 80)) + 
-  geom_point(aes(Age,Price, color = BuildingType))
-
-ggplot(data = HouseData %>% filter(
-  Rooms > 2, 
-  Age <= 80)) + 
-  geom_point(aes(Age,Price, color = BuildingType))
-
-ggplot(data = HouseData %>% filter(
-  Age <= 80)) + 
-  geom_point(aes(Size,Rooms, color = BuildingType), alpha = 0.5)
+# ggplot(data = HouseData %>% filter(
+#   Rooms <= 2, 
+#   Age <= 80)) + 
+#   geom_point(aes(Age,Price, color = BuildingType))
+# 
+# ggplot(data = HouseData %>% filter(
+#   Rooms > 2, 
+#   Age <= 80)) + 
+#   geom_point(aes(Age,Price, color = BuildingType))
+# 
+# ggplot(data = HouseData %>% filter(
+#   Age <= 80)) + 
+#   geom_point(aes(Size,Rooms, color = BuildingType), alpha = 0.5)
 ```
 :::
 ::::
@@ -125,7 +128,7 @@ hist_size = hist(HouseData$Size,
 hist_age = hist(HouseData$Age, main = "Age of houses in Espoo (2024)", xlab = "Age")
 ```
 
-There are three building types in the dataset: apartment, detached, and row house. Since the building type can also affect the price, we explore the overall relationship between housing age and price and grouped by the building type. The scatter plots below suggest that overall, apartment is the cheapest, followed by row house. Detached house is the most expensive. 
+There are three building types in the dataset: apartment, detached, and row house. Since the building type can also affect the price, we explore the overall relationship between housing price and age as well as size, grouped by the building type. The scatter plots below suggest that overall, apartment is the cheapest, followed by row house. Detached house is the most expensive. 
 
 ```{r echo=FALSE}
 ggplot(data = HouseData %>% filter(
@@ -158,7 +161,8 @@ ggplot(data = HouseData %>% filter(
 # Models 
 
 ## Linear model
-As a practice, we start with a simple linear model with two variable—housing size and age.
+As a practice, we start with a simple linear model with two variable—housing size and age. The formula of the linear model is below 
+
 
 ## Non-linear model with hierarchy
 
@@ -174,7 +178,7 @@ In the linear model, we choose a normal prior of $(\mu = 5000, 1500)$ for the ho
 To fit the model and run MCMC inference, we use `brms`—a high-level interface for Stan providing tools to create a wide range of Bayesian models. 
 
 ```{r}
-fit1 = brm(Price ~ Size + Age,
+fit1 = brms::brm(Price ~ Size + Age,
            data = HouseData,
            family = gaussian(),
            prior = c(
@@ -194,6 +198,7 @@ fit1 = brm(Price ~ Size + Age,
 ::: {.callout-warning collapse=true}
 
 ```{r}
+fit1 <- readRDS("fit1.rds")
 saveRDS(fit1, file="fit1")
 ```
 
@@ -202,7 +207,7 @@ saveRDS(fit1, file="fit1")
 
 ## Convergence diagnostic 
 ```{r}
-rhat_basic(fit1)
+posterior::rhat_basic(fit1)
 ```
 
 To obtain summaries and convergence diagnostic of the fitted linear model , we call the function `summary()`. 
@@ -217,22 +222,22 @@ plot(fit1)
 ``` 
 
 ```{r}
-loo(fit1)
-pp_check(fit1)
+brms::loo(fit1)
+brms::pp_check(fit1)
 ```
 
 ```{r echo=FALSE}
 # hide the code in pdf 
-ggplot(data = HouseData %>% filter(
+ggplot2::ggplot(data = HouseData %>% filter(
   Rooms <= 4, 
-  Age <= 80, 
+  Age <= 80,  
   BuildingType == 'kt')) + 
-  geom_point(aes(Age,Price, color = Rooms)) + 
-  geom_abline(intercept = 
+  ggplot2::geom_point(aes(Age,Price, color = Rooms)) + 
+  ggplot2::geom_abline(intercept = 
                 fixef(fit1)[1] + 
                 fixef(fit1)[2]*mean(HouseData$Size), 
               slope = 
-                fixef(fit1)[3]) +
+                brms::fixef(fit1)[3]) +
   labs(
     title = "Espoo apartment price grouped by number of rooms",
   )
@@ -251,7 +256,7 @@ The structure of our analysis with the non-linear model is similar to that of th
 ## MCMC inference
 Non-linear models require the bf() around the model specification together with 'nl = TRUE'. The parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
 ```{r}
-fit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
+fit2 =  brms::brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
                    b1 ~ 1, 
                    b2 ~ 1 + (1|PostalCode),
                    b3 ~ 1 + (1|PostalCode),
@@ -277,6 +282,9 @@ fit2 = brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
 ::: {.callout-warning collapse=true}
 
 Hide the summary in the pdf because it looks hard to follow.
+```{r}
+fit2 <- readRDS("fit2.rds")
+```
 
 ```{r}
 saveRDS(fit2, file="fit2")
@@ -291,24 +299,22 @@ To obtain summaries of the fitted model, we again apply function `summary()` in 
 
 
 ```{r}
-plot(conditional_effects(fit2), points = TRUE)
+plot(brms::conditional_effects(fit2), points = TRUE)
 ```
 
-
-```{r}
-coefs = coef(fit2)
-```
 
 ## Posterior predictive check
 
 ```{r}
-loo(fit2)
-pp_check(fit2)
+brms::pp_check(fit2)
 ```
 ## Sensitivity analysis
 
 
 # Model comparison 
+```{r echo=FALSE}
+brms::loo(fit2)
+```
 
 # Discussion
 
