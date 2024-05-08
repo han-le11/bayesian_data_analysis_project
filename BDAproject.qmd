@@ -14,11 +14,14 @@ format:
     page-layout: article
   pdf:  
     geometry:
-    - left=3cm,top=2cm,bottom=2cm,right=3cm
+    - left=3cm,top=1cm,bottom=1cm,right=3cm
     number-sections: true
     code-annotations: none
 editor: source
 link-citations: true
+output:
+  bookdown::html_document2: default
+  bookdown::pdf_document2: default
 ---
 
 :::: {.content-hidden when-format="pdf"}
@@ -36,7 +39,8 @@ library(posterior)
 library(brms)
 library(magrittr) # needs to be run every time you start R and want to use %>%
 library(dplyr)  
-library(cmdstanr) 
+library(cmdstanr)
+library(bookdown)
 # Globally specfiy cmdstan backend for brms
 options(brms.backend="cmdstanr")
 # Tell brms to cache results if possible
@@ -49,7 +53,7 @@ bayesplot::bayesplot_theme_set(theme_minimal(base_size = 14))
 # This registers CmdStan as the backend for compiling cmdstan-chunks.
 # check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
 # register_knitr_engine(override = FALSE)
-knitr::opts_chunk$set(fig.width=7, warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE) 
 ```
 :::
 ::::
@@ -57,9 +61,9 @@ knitr::opts_chunk$set(fig.width=7, warning = FALSE, message = FALSE)
 # Introduction
 In February 2024, the Pellervo Economic Research (PTT) of Finland forecasts that the housing prices in Espoo will increase by 1.7\% because of the influx of people moving to Espoo @ptt2024. Prediction of housing prices helps individuals and businesses make informed decisions about buying, selling, or investing in housing properties. For people planning to buy a house in Espoo, housing price prediction helps with financial planning and estimating the mortgage. For real estate professionals, economists, and policymakers, housing price prediction provides insights into factors that influence housing supply and demand, as well as urban development patterns. For example, housing price predictive models can help identify areas with affordable housing options, address housing inequality, and promote inclusive urban development. In addition, for banks, mortgage lenders, and other financial organizations, predicting housing prices is essential for assessing the risk associated with lending and investment activities.
 
-However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Many factors such as age, size, and type of building can influence prices. In this project, our goal is to model the effects of Espoo housing attributes on their housing prices, using linear and non-linear Bayesian multivariate models. Regarding the linear model, we investigate two variables—the age and the size of the house. For the non-linear model, we also add hierarchy.
+However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Many factors such as housing age, size, and average income of housing area can affect house prices. In this project, our goal is to model the effects of Espoo housing size and age on their prices, using linear and non-linear Bayesian multivariate models. Regarding the linear model, we investigate with two variables—the age and the size of the house. For the non-linear model, we also add hierarchy by using average income of the postal area as a grouping variable.
 
-The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the Bayesian models used for analysis. Section 4 presents our analysis with the linear model and Section 5 for the non-linear model. 
+The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the Bayesian models used for analysis. Section 4 presents our analysis with the linear model and Section 5 for the non-linear model. Section 6 shows the results of comparson between our two models. Section 7 discusses issues and potential improvements. Section 8 concludes what was learned from the data analysis. Finally, Section 9 is our self-reflection of what we learned while making the project.
 
 
 # Description of the data and the analysis
@@ -67,7 +71,7 @@ The structure of the report is as follows. Section 2 describes the data and the 
 ## General description
 The housing price dataset is obtained from Asuntojen Hintatiedot @asunto, which can be translated into Price Information of Housing. This dataset can be viewed and downloaded from [here](https://drive.google.com/file/d/1VMD4fkEzAcP71FXoBq6P5i0Rme04AugG/view?usp=sharing). At the time of conducting the analysis and making this report, to our knowledge, there are no other existing analyses with this housing dataset.
 
-In the original dataset, there are 901 observations and 10 variables. Each variable contains certain information about a house. We add a variable called $Age = 2024 - ProductionYear$ to compute the age of a house based on the year it was produced and to investigate the effect of house's age on its price. 
+In the original dataset, there are 901 observations and 10 variables. We filter out one house that ages over 100 years from the dataset; therefore, we do the analysis with 900 observations. Each variable contains certain information about a house. We also added two variables to use in our analysis. The first added variable is $Age = 2024 - ProductionYear$, which computes the age of a house based on its production year and is used to investigate the effect of house's age on its price. The second added variable is $IncomeClass$, which rounds the variable $Income$. Below is the first 5 rows of the dataset `HouseData` after adding two variables.
 
 
 :::: {.content-hidden when-format="pdf"}
@@ -76,6 +80,7 @@ In the original dataset, there are 901 observations and 10 variables. Each varia
 Hiding in the pdf report because not all are needed to show. Feel free to adjust!
 ```{r}
 HouseData = read.csv('data/housing-data.csv', header=TRUE)
+
 HouseData = HouseData %>% 
   mutate(Age = 2024 - ProductionYear, 
          IncomeClass = round(Income, digits = -2)
@@ -109,88 +114,110 @@ hist(HouseData$Price)
 :::
 ::::
 
-There are 8 empty cells in column \textit{Condition} and 30 in column \textit{LandOwnership}. Therefore, these two parameters are not chosen for the Bayesian models in this report.
-
 ```{r echo=FALSE}
 head(HouseData, 5)
 ```
+
+There are 8 empty cells in column \textit{Condition} and 30 in column \textit{LandOwnership}. Therefore, these two parameters are not used for the Bayesian models and analyses in this report. 
+
+
 ## Exploratory data analysis
 
-In this part, we present how we use visualisation learn more about the dataset `HouseData`. We plot some histograms to explore the range of Espoo housing size and age. As observed in the histograms below, most houses fall in the range of square meter. Most houses age from 0 to 10 years. Besides, all house sizes and ages in the dataset are positive values, as they should. 
+In this part, we present how we use visualisation to learn more about the dataset `HouseData`. We plot some histograms to explore the range of Espoo housing price, size, and age. As observed in the histograms below, the housing price and size can be assumed to follow normal distribution. Most houses fall in the range of 50 to 100 square meter, with a few outliers of houses over 200 $m^2$. Most houses age from 0 to 10 years. Besides, all house sizes and ages in the dataset are positive values, as they should.
 
-```{r hist_size, echo=FALSE}
+```{r hist_price, fig.cap="Price of houses in the Espoo housing dataset.", echo=FALSE}
+hist_size = hist(HouseData$Price, 
+                 main="Price of houses in Espoo (in EUR)",
+                 xlab = "Price (in EUR)")
+```
+
+```{r hist_size, fig.cap="Size range of all houses in the Espoo housing dataset.", echo=FALSE}
 hist_size = hist(HouseData$Size, 
-                 main = "Size of houses in Espoo (2024)", 
+                 main="Size of houses in Espoo",
                  xlab = "Square metre")
 ```
-
-```{r hist_age, echo=FALSE}
-hist_age = hist(HouseData$Age, main = "Age of houses in Espoo (2024)", xlab = "Age")
+```{r hist_age, fig.cap = "Age range of houses in Espoo as of 2024", echo=FALSE}
+hist_age = hist(HouseData$Age, 
+                main="Age of houses in Espoo as of 2024",
+                xlab = "Age (years)")
 ```
 
-There are three building types in the dataset: apartment, detached, and row house. Since the building type can also affect the price, we explore the overall relationship between housing price and age as well as size, grouped by the building type. The scatter plots below suggest that overall, apartment is the cheapest, followed by row house. Detached house is the most expensive. 
+There are three building types in the dataset: apartment, detached, and row house. Since the building type can also affect the price, we group the houses by their building type and explore the overall relationship between housing price and age. The scatter plot in Figure suggests that overall, across the ages, apartment is the cheapest type, followed by row house. Detached house is the most expensive type. 
 
-```{r echo=FALSE}
+```{r scatter1, fig.width=6, fig.cap = "Housing price & age by building type.", echo=FALSE}
 ggplot(data = HouseData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Age, Price, color = BuildingType)) +
-  scale_color_manual(labels=c("Apartment house", "Detached house", "Row house"), values = c("indianred", "darkseagreen", "steelblue")) + 
+  scale_color_manual(labels=c("Apartment house", "Detached house", "Row house"), values = c("indianred", "darkseagreen", "steelblue")) +
   labs(
-    title = "Housing price & age by building type",
+    x = "Age (years)"
   )
 ```
-```{r echo=FALSE}
+
+
+Figure below shows the housing size and price, grouped by three building types. We can observe that generally, apartments are in the cheapest and smallest size range, while detached houses are in the most expensive and largest size range. 
+
+```{r scatter2, fig.width=6, fig.cap = "Housing price & size by building type"}
 ggplot(data = HouseData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Size, Price, color = BuildingType)) +
   scale_color_manual(labels=c("Apartment house", "Detached house", "Row house"), values = c("indianred", "darkseagreen", "steelblue")) + 
   labs(
-    title = "Housing price & size by building type",
-    x = "Size (square meter)",
+    x = "Size (square meter)"
   )
 ```
 
-Comment: This plot for each postal code is a bit confusing and hard to read?
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+Comment: Hiding because This plot for each postal code is a bit confusing and hard to read. Maybe you can take a look?
+
 ```{r}
 # plots for each postal code
 ggplot(data = HouseData %>% filter(
   Age <= 80)) + 
   geom_point(aes(Age, PricePerSquare, color = BuildingType)) + facet_wrap(~IncomeClass)
 ```
+:::
+:::: 
+
 
 # Models 
 
+From the exploratory data analysis and by intuition, there can be effect of housing size and age on its price. Therefore, we will model the effects of housing size and age in the dataset `HouseData` on their prices. 
+
 ## Linear model
-As a practice, we start with a simple linear model with two variable—housing size and age. The formula of the linear model is below 
+
+As a common practice, we start our analysis with a simple, vanilla linear model with Gaussian noise.
 
 
 ## Non-linear model with hierarchy
 
+
 # Analysis with the linear model
 
-This section shows the code of our linear model with Gaussian noise and how the Markov chain Monte Carlo (MCMC) inference was run. We also shows the convergence diagnostic values for the linear model and their interpretation. In addition, we report posterior predictive checks.
+Overall, this section shows the choices for priors, the code of our linear model and how the Markov chain Monte Carlo (MCMC) inference was run. We also shows the convergence diagnostic values for the linear model and their interpretation. In addition, we report posterior predictive checks and sensitivity analysis.
 
 ## Priors
-In the linear model, we choose a normal prior of $(\mu = 5000, 1500)$ for the housing size.
+
+For the priors of the linear model, we will use the weakly informative priors for the housing size and age.
 
 ## MCMC inference
 
-To fit the model and run MCMC inference, we use `brms`—a high-level interface for Stan providing tools to create a wide range of Bayesian models. 
+To fit the model and run MCMC inference, we use `brms`—a high-level interface for Stan providing tools to create a wide range of Bayesian models. By default, 4 chains were drawn with 2000 iterations for each chain. The warm-up length for each chain is 1000. 
 
-```{r}
+```{r echo=TRUE}
 fit1 = brms::brm(Price ~ Size + Age,
-           data = HouseData,
-           family = gaussian(),
-           prior = c(
-             prior(normal(5000, 1500), class = b, coef = Size),
-             prior(normal(1000, 5000), class = b, coef = Age),
-             prior(normal(100000, 30000), class = Intercept)
-             ),
-           refresh=0, 
-           show_exceptions = FALSE,
-           # This causes brms to cache the results
-           file="fit1.rds" 
-           )
+                 data = HouseData,
+                 family = gaussian(),
+                 prior = c(
+                   prior(normal(5000, 1500), class = "b", coef = Size),
+                   prior(normal(-1000, 5000), class = "b", coef = Age),
+                   prior(normal(100000, 30000), class = "Intercept")
+                   ),
+                 show_exceptions = FALSE,
+                 # This causes brms to cache the results
+                 file="fit1.rds" 
+                 )
 ```
 
 
@@ -199,35 +226,28 @@ fit1 = brms::brm(Price ~ Size + Age,
 
 ```{r}
 fit1 <- readRDS("fit1.rds")
-saveRDS(fit1, file="fit1")
+saveRDS(fit1, file="fit1.rds")
 ```
 
-:::: 
-::: 
-
-## Convergence diagnostic 
 ```{r}
-posterior::rhat_basic(fit1)
+check_divergence_transitions <- function(fit) {
+  np <- nuts_params(fit)
+  str(np)
+  
+  # extract the number of divergence transitions
+  sprintf("Number of divergence transitions: %d", sum(subset(np, Parameter == "divergent__")$Value))
+}
 ```
 
-To obtain summaries and convergence diagnostic of the fitted linear model , we call the function `summary()`. 
+Diagnostics for linear model:
 ```{r}
-summary(fit1)
-```
-## Posterior predictive check
-
-By using function `plot()`, we can plot the MCMC chains as well as the posterior distributions for each parameter. 
-```{r}
-plot(fit1) 
-``` 
-
-```{r}
-brms::loo(fit1)
-brms::pp_check(fit1)
+head(rhat(fit1))
+head(neff_ratio(fit1))
+check_divergence_transitions(fit1)
 ```
 
 ```{r echo=FALSE}
-# hide the code in pdf 
+# may not need this plot
 ggplot2::ggplot(data = HouseData %>% filter(
   Rooms <= 4, 
   Age <= 80,  
@@ -239,15 +259,100 @@ ggplot2::ggplot(data = HouseData %>% filter(
               slope = 
                 brms::fixef(fit1)[3]) +
   labs(
-    title = "Espoo apartment price grouped by number of rooms",
+    title = "Effect of apartment age on price grouped by number of rooms",
   )
+```
+:::: 
+::: 
+
+## Convergence diagnostic 
+
+Below is the summary and convergence diagnostic report for our fitted linear model. $\hat{R}$ is computed to monitor the convergence of iterative simulation. For all variables our $\hat{R}$ are under 1.01, which indicates possible convergence and means that we can stop the sampling process. In case $\hat{R} > 1.01$, we need to keep sampling to reach convergence. All ESS ratios are over 50 percents.
+
+By using function `check_hmc_diagnostics()`, we can verify that none of 4000 iterations saturated the maximum tree depth of 10.
+
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+```{r echo=FALSE}
+printrstan::check_hmc_diagnostics(fit1$fit)
+```
+:::: 
+:::
+
+
+```{r}
+rhat(fit1)
+neff_ratio(fit1)
+```
+
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+```{r echo=FALSE}
+summary(fit1)
+```
+:::: 
+:::
+
+By using function `plot()`, we can plot the MCMC chains and the posterior distributions for each parameter. From the figure, we observe that our MCMC chains have converged and mixed well and to the same posterior.  
+
+```{r, fig.height=6, fig.width=7, fig.cap="Four MCMC chains and posterior distributions for each parameter."}
+plot(fit1)
+```
+
+
+## Posterior predictive check
+
+To investigate and compare model fit, we can apply graphical posterior predictive checks. Let's check the posterior predictions compared to the observed data using the `pp_check` function. In the plot below, the dark blue curve represents the $y$ values, which are the observed data, and the light blue curves represent $y_{rep}$ values, which are replicated data sets from the posterior predictive distribution. Based on the plot, the posterior prediction roughly encapsulates the main features of the observed data. However, there are negative values $y_{rep}$ from the posterior predictive distribution.
+
+```{r, check1, fig.cap = "Posterior predictive check", echo=FALSE}
+brms::pp_check(fit1)
+```
+
+Next, we use the `conditional_effects` method to visualize the model-implied linear relationship between housing size and price as well as housing age and price.
+
+```{r, fig.height=3, fig.width=5, fig.cap="Conditional effects of housing attributes on housing price.", echo=FALSE}
+plot(conditional_effects(fit1), points = TRUE, ask=FALSE)
 ```
 
 ## Sensitivity analysis
 
-Sensitivity analysis is conducted with respect to prior choices (i.e., checking whether the result changes a lot if prior is changed).
+Sensitivity analysis is conducted with respect to prior choices (i.e., checking whether the result changes a lot if prior is changed). 
+
+We use external references to pick the new weakly informed prior for the housing size. This technique is more general and doesn’t assume there is prior knowledge. In Espoo, the average apartment size is 58 square meters in 2023 @htimes. Although average size can be different across different building types, to keep the sensitivity analysis of the linear model simple, we choose $\mu_0 = 58$ for the new prior of housing size. The housing size range is estimated to be 35-81 square meters. 
+
+Assume that 99.7\% of all houses in Espoo fall into this range. Under our assumption of a normal distribution, this range will encompass values between $\mu \pm 3\sigma$. Assuming symmetry, the chosen mean $\mu_0$ and either the upper or lower bound of the reference range can be used to solve for $\sigma_0$:
+
+$$
+Pr(58 - 3\sigma_0 > 35) \approx 0.997 \to Pr(\sigma_0 < 7.67) \approx 0.997
+$$
+Since we have found that $\sigma_0 < 7.67$, let's choose $\sigma_0=7$ for the weakly informative prior of the housing size.
+
+Regarding the prior for the housing age, we slightly change it to see whether the result changes a lot. 
+
+```{r echo=TRUE}
+fit1_1 = brms::brm(Price ~ Size + Age,
+                 data = HouseData,
+                 family = gaussian(),
+                 prior = c(
+                   prior(normal(58, 7), class = "b", coef = Size),
+                   prior(normal(-1000, 4000), class = "b", coef = Age),
+                   prior(normal(100000, 30000), class = "Intercept")
+                   ),
+                 show_exceptions = FALSE
+                 )
+```
+
+As shown in the posterior predictive visual check below, the light blue curves, which represent the replicated data sets from the posterior predictive distribution, change dramatically. This behavior suggests that our linear model is quite sensitive to changes in priors. 
+
+```{r echo=FALSE}
+fit1_1 <- readRDS("fit1_1.rds")
+saveRDS(fit1_1, file="fit1_1.rds")
+```
 
 
+```{r, check1new, fig.cap = "Posterior predictive check for the linear model with new priors", echo=FALSE}
+brms::pp_check(fit1_1)
+```
 
 # Non-linear model
 
@@ -287,7 +392,7 @@ fit2 <- readRDS("fit2.rds")
 ```
 
 ```{r}
-saveRDS(fit2, file="fit2")
+saveRDS(fit2, file="fit2.rds")
 summary(fit2)
 ```
 :::: 
@@ -298,7 +403,7 @@ summary(fit2)
 To obtain summaries of the fitted model, we again apply function `summary()` in `brms` package. 
 
 ```{r}
-plot(brms::conditional_effects(fit2), points = TRUE)
+plot(brms::conditional_effects(fit2), points = TRUE, ask=FALSE)
 ```
 
 
@@ -311,13 +416,26 @@ brms::pp_check(fit2)
 
 
 # Model comparison 
-```{r echo=FALSE}
+
+## Model comparison using LOO-CV
+
+We start our model comparison by using leave-one-out cross-validation. For the linear model, the 
+
+```{r}
+brms::loo(fit1)
+```
+
+```{r}
 brms::loo(fit2)
 ```
 
 # Discussion
 
+
 # Conclusion
+
+# Self-reflection
+We learned how to form a Bayesian analysis problem. We revised the linear and hierarchical models covered in this course. We also learned how to structure the report to make it readable and easy to follow.
 
 # References
 
