@@ -61,9 +61,9 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE)
 # Introduction
 In February 2024, the Pellervo Economic Research (PTT) of Finland forecasts that the housing prices in Espoo will increase by 1.7\% because of the influx of people moving to Espoo @ptt2024. Prediction of housing prices helps individuals and businesses make informed decisions about buying, selling, or investing in housing properties. For people planning to buy a house in Espoo, housing price prediction helps with financial planning and estimating the mortgage. For real estate professionals, economists, and policymakers, housing price prediction provides insights into factors that influence housing supply and demand, as well as urban development patterns. For example, housing price predictive models can help identify areas with affordable housing options, address housing inequality, and promote inclusive urban development. In addition, for banks, mortgage lenders, and other financial organizations, predicting housing prices is essential for assessing the risk associated with lending and investment activities.
 
-However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Many factors such as housing age, size, and average income of housing area can affect house prices. In this project, our goal is to model the effects of Espoo housing size and age on their prices, using linear and non-linear Bayesian multivariate models. Regarding the linear model, we investigate with two variables—the age and the size of the house. For the non-linear model, we also add hierarchy by using average income of the postal area as a grouping variable.
+However, housing price prediction can be challenging. The relationships between housing attributes and prices may not be linear. Many factors such as housing age, size, and average income of housing area can affect house prices. In this project, our goal is to model the effects of Espoo housing size and age on their prices, using non-hierarchical linear models and hierarchical  models. Regarding the linear model, we investigate with two variables—the age and the size of the house. For the hierarchical model, we also add hierarchy by using average income of the postal area as a grouping variable.
 
-The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the Bayesian models used for analysis. Section 4 presents our analysis with the linear model and Section 5 for the non-linear model. Section 6 shows the results of comparson between our two models. Section 7 discusses issues and potential improvements. Section 8 concludes what was learned from the data analysis. Finally, Section 9 is our self-reflection of what we learned while making the project.
+The structure of the report is as follows. Section 2 describes the data and the analysis problem. Section 3 describes the models used for analysis and prior choices. Section 4 presents our analysis with the non-hierarchical linear model and Section 5 for the hierarchical model. Section 6 shows the results of comparison between our two models. Section 7 discusses issues and potential improvements. Section 8 concludes what was learned from the data analysis. Finally, Section 9 is our self-reflection of what we learned while making the project.
 
 
 # Description of the data and the analysis
@@ -170,7 +170,6 @@ ggplot(data = HouseData %>% filter(
 :::: {.content-hidden when-format="pdf"}
 ::: {.callout-warning collapse=true}
 Comment: Hiding because This plot for each postal code is a bit confusing and hard to read. Maybe you can take a look?
-
 ```{r}
 # plots for each postal code
 ggplot(data = HouseData %>% filter(
@@ -181,43 +180,37 @@ ggplot(data = HouseData %>% filter(
 :::: 
 
 
-# Models 
+# Models and prior choices
 
-From the exploratory data analysis and by intuition, there can be effect of housing size and age on its price. Therefore, we will model the effects of housing size and age in the dataset `HouseData` on their prices. 
+From the exploratory data analysis and by intuition, we can see that there can be meaningful effect of housing size and age on its price. Therefore, we will model the effects of housing size and age in the dataset `HouseData` on their prices. As a common practice, we start our analysis with a simple, vanilla linear non-hierarchical model with Gaussian noise.
 
-## Linear model
+Next, to take into account the variability of house prices by area, we use the average incomes of the postal areas as the grouping variable for the hierarchical model. We chose to use the income data (instead of the postal codes themselves), because we wanted to aggregate some of the smaller postal areas with other areas and we assume that average income gives a good enough similarity measure.
 
-As a common practice, we start our analysis with a simple, vanilla linear model with Gaussian noise.
-
-
-## Non-linear model with hierarchy
+In both models, we choose normal priors for the parameters with $(\mu, \sigma)$ equal to $(5000, 1500)$ for the price per square meter, $(-1000, 5000)$ for the yearly depreciation of house price and $(1e5, 3e4)$ for the intercept. A reasonable guess for the price per square meter is 5000 euros and we expect that it's not too far off so we set the standard deviation at 1500, meaning values under 0 and over 10000 are very unlikely by our prior knowledge. We estimate the yearly depreciation to be some negative number on the order of thousands of euros per year, so we set its prior mean at -1000 with a fairly large variance by setting the standard deviation at 5000 (because we expect that 50 year old houses, for example, aren't free). We set the intercept's prior mean at 100,000 euros & the standard deviation at 30,000 euros, because we expect that the cheapest new apartments cost about 100,000 euros, but aren't free no matter how small. 
 
 
 # Analysis with the linear model
 
-Overall, this section shows the choices for priors, the code of our linear model and how the Markov chain Monte Carlo (MCMC) inference was run. We also shows the convergence diagnostic values for the linear model and their interpretation. In addition, we report posterior predictive checks and sensitivity analysis.
-
-## Priors
-
-For the priors of the linear model, we will use the weakly informative priors for the housing size and age.
+Overall, this section shows the code of our linear model and how the Markov chain Monte Carlo (MCMC) inference was run. We also shows the convergence diagnostic values for the linear model and their interpretation. In addition, we report posterior predictive checks and sensitivity analysis.
 
 ## MCMC inference
 
 To fit the model and run MCMC inference, we use `brms`—a high-level interface for Stan providing tools to create a wide range of Bayesian models. By default, 4 chains were drawn with 2000 iterations for each chain. The warm-up length for each chain is 1000. 
 
-```{r echo=TRUE}
+```{r}
 fit1 = brms::brm(Price ~ Size + Age,
-                 data = HouseData,
-                 family = gaussian(),
-                 prior = c(
-                   prior(normal(5000, 1500), class = "b", coef = Size),
-                   prior(normal(-1000, 5000), class = "b", coef = Age),
-                   prior(normal(100000, 30000), class = "Intercept")
-                   ),
-                 show_exceptions = FALSE,
-                 # This causes brms to cache the results
-                 file="fit1.rds" 
-                 )
+           data = HouseData,
+           family = gaussian(),
+           prior = c(
+             prior(normal(5000, 1500), class = b, coef = Size),
+             prior(normal(-1000, 5000), class = b, coef = Age),
+             prior(normal(100000, 30000), class = Intercept)
+             ),
+           refresh=0, 
+           show_exceptions = FALSE,
+           # This causes brms to cache the results
+           file="fit1.rds" 
+           )
 ```
 
 
@@ -229,52 +222,19 @@ fit1 <- readRDS("fit1.rds")
 saveRDS(fit1, file="fit1.rds")
 ```
 
-```{r}
-check_divergence_transitions <- function(fit) {
-  np <- nuts_params(fit)
-  str(np)
-  
-  # extract the number of divergence transitions
-  sprintf("Number of divergence transitions: %d", sum(subset(np, Parameter == "divergent__")$Value))
-}
-```
-
-Diagnostics for linear model:
-```{r}
-head(rhat(fit1))
-head(neff_ratio(fit1))
-check_divergence_transitions(fit1)
-```
-
-```{r echo=FALSE}
-# may not need this plot
-ggplot2::ggplot(data = HouseData %>% filter(
-  Rooms <= 4, 
-  Age <= 80,  
-  BuildingType == 'kt')) + 
-  ggplot2::geom_point(aes(Age,Price, color = Rooms)) + 
-  ggplot2::geom_abline(intercept = 
-                fixef(fit1)[1] + 
-                fixef(fit1)[2]*mean(HouseData$Size), 
-              slope = 
-                brms::fixef(fit1)[3]) +
-  labs(
-    title = "Effect of apartment age on price grouped by number of rooms",
-  )
-```
 :::: 
 ::: 
 
 ## Convergence diagnostic 
 
-Below is the summary and convergence diagnostic report for our fitted linear model. $\hat{R}$ is computed to monitor the convergence of iterative simulation. For all variables our $\hat{R}$ are under 1.01, which indicates possible convergence and means that we can stop the sampling process. In case $\hat{R} > 1.01$, we need to keep sampling to reach convergence. All ESS ratios are over 50 percents.
+Below is the summary and convergence diagnostic report for our fitted linear model. $\hat{R}$ is computed to monitor the convergence of iterative simulation. For all variables our $\hat{R}$ are under 1.01, which indicates possible convergence and means that we can stop the sampling process. In case $\hat{R} > 1.01$, we need to keep sampling to reach convergence. All ESS ratios are over 50 percents, which means that the effective sample sizes are sufficient.
 
 By using function `check_hmc_diagnostics()`, we can verify that none of 4000 iterations saturated the maximum tree depth of 10.
 
 :::: {.content-hidden when-format="pdf"}
 ::: {.callout-warning collapse=true}
 ```{r echo=FALSE}
-printrstan::check_hmc_diagnostics(fit1$fit)
+rstan::check_hmc_diagnostics(fit1$fit)
 ```
 :::: 
 :::
@@ -287,6 +247,7 @@ neff_ratio(fit1)
 
 :::: {.content-hidden when-format="pdf"}
 ::: {.callout-warning collapse=true}
+too hard to read so hide it in pdf
 ```{r echo=FALSE}
 summary(fit1)
 ```
@@ -295,20 +256,20 @@ summary(fit1)
 
 By using function `plot()`, we can plot the MCMC chains and the posterior distributions for each parameter. From the figure, we observe that our MCMC chains have converged and mixed well and to the same posterior.  
 
-```{r, fig.height=6, fig.width=7, fig.cap="Four MCMC chains and posterior distributions for each parameter."}
+```{r, fig.height=6, fig.width=8, fig.cap="Four MCMC chains and posterior distributions for each parameter."}
 plot(fit1)
 ```
 
 
 ## Posterior predictive check
 
-To investigate and compare model fit, we can apply graphical posterior predictive checks. Let's check the posterior predictions compared to the observed data using the `pp_check` function. In the plot below, the dark blue curve represents the $y$ values, which are the observed data, and the light blue curves represent $y_{rep}$ values, which are replicated data sets from the posterior predictive distribution. Based on the plot, the posterior prediction roughly encapsulates the main features of the observed data. However, there are negative values $y_{rep}$ from the posterior predictive distribution.
+To investigate and compare model fit, we can apply graphical posterior predictive checks (Figure 7). Let's check the posterior predictions compared to the observed data using the `pp_check` function. In the plot below, the dark blue curve represents the $y$ values, which are the observed data, and the light blue curves represent $y_{rep}$ values, which are replicated data sets from the posterior predictive distribution. Based on the plot, the posterior prediction roughly encapsulates the main features of the observed data. However, there are negative values $y_{rep}$ from the posterior predictive distribution, which means the positivity of house price is not captured.
 
-```{r, check1, fig.cap = "Posterior predictive check", echo=FALSE}
+```{r, check1, fig.cap = "Posterior predictive check for the non-hierarchical model", echo=FALSE}
 brms::pp_check(fit1)
 ```
 
-Next, we use the `conditional_effects` method to visualize the model-implied linear relationship between housing size and price as well as housing age and price.
+Next, in Figure 8, we use the `conditional_effects` method to visualize the model-implied linear relationship between housing size and price as well as housing age and price.
 
 ```{r, fig.height=3, fig.width=5, fig.cap="Conditional effects of housing attributes on housing price.", echo=FALSE}
 plot(conditional_effects(fit1), points = TRUE, ask=FALSE)
@@ -316,50 +277,74 @@ plot(conditional_effects(fit1), points = TRUE, ask=FALSE)
 
 ## Sensitivity analysis
 
-Sensitivity analysis is conducted with respect to prior choices (i.e., checking whether the result changes a lot if prior is changed). 
 
-We use external references to pick the new weakly informed prior for the housing size. This technique is more general and doesn’t assume there is prior knowledge. In Espoo, the average apartment size is 58 square meters in 2023 @htimes. Although average size can be different across different building types, to keep the sensitivity analysis of the linear model simple, we choose $\mu_0 = 58$ for the new prior of housing size. The housing size range is estimated to be 35-81 square meters. 
+Sensitivity analysis is conducted with respect to prior choices. To keep the sensitivity analysis of the linear model simple and not too time-consuming, we slightly change the priors for all three parameters to see whether the results change a lot. 
 
-Assume that 99.7\% of all houses in Espoo fall into this range. Under our assumption of a normal distribution, this range will encompass values between $\mu \pm 3\sigma$. Assuming symmetry, the chosen mean $\mu_0$ and either the upper or lower bound of the reference range can be used to solve for $\sigma_0$:
+```{r}
+fit1a = brms::brm(Price ~ Size + Age,
+           data = HouseData,
+           family = gaussian(),
+           prior = c(
+             prior(normal(8000, 500), class = b, coef = Size),
+             prior(normal(0, 1000), class = b, coef = Age),
+             prior(normal(100000, 10000), class = Intercept)
+             ),
+           refresh=0, 
+           show_exceptions = FALSE,
+           # This causes brms to cache the results
+           file="fit1a.rds" 
+           )
 
-$$
-Pr(58 - 3\sigma_0 > 35) \approx 0.997 \to Pr(\sigma_0 < 7.67) \approx 0.997
-$$
-Since we have found that $\sigma_0 < 7.67$, let's choose $\sigma_0=7$ for the weakly informative prior of the housing size.
+fit1b = brms::brm(Price ~ Size + Age,
+           data = HouseData,
+           family = gaussian(),
+           prior = c(
+             prior(normal(1000, 500), class = b, coef = Size),
+             prior(normal(-3000, 1000), class = b, coef = Age),
+             prior(normal(50000, 10000), class = Intercept)
+             ),
+           refresh=0, 
+           show_exceptions = FALSE,
+           # This causes brms to cache the results
+           file="fit1b.rds" 
+           )
 
-Regarding the prior for the housing age, we slightly change it to see whether the result changes a lot. 
+cf = data.frame(O = fixef(fit1)[,1])
+cf$A = fixef(fit1a)[,1]
+cf$B = fixef(fit1b)[,1]
 
-```{r echo=TRUE}
-fit1_1 = brms::brm(Price ~ Size + Age,
-                 data = HouseData,
-                 family = gaussian(),
-                 prior = c(
-                   prior(normal(58, 7), class = "b", coef = Size),
-                   prior(normal(-1000, 4000), class = "b", coef = Age),
-                   prior(normal(100000, 30000), class = "Intercept")
-                   ),
-                 show_exceptions = FALSE
-                 )
+print(cf)
 ```
+The first column is parameter of our original linear model. The second and third column are for the linear models with modified priors. We see that changing the priors does not change the parameter values much.
 
-As shown in the posterior predictive visual check below, the light blue curves, which represent the replicated data sets from the posterior predictive distribution, change dramatically. This behavior suggests that our linear model is quite sensitive to changes in priors. 
-
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
 ```{r echo=FALSE}
-fit1_1 <- readRDS("fit1_1.rds")
-saveRDS(fit1_1, file="fit1_1.rds")
+fit1a <- readRDS("fit1a.rds")
+fit1b <- readRDS("fit1b.rds")
+
+saveRDS(fit1a, file="fit1a.rds")
+saveRDS(fit1b, file="fit1b.rds")
+```
+:::: 
+:::
+
+As shown in Figure 10 and Figure 11 of the posterior predictive visual check below, the light blue curves, which represent the replicated data sets from the posterior predictive distribution, does not change dramatically. This behavior suggests that our linear model is not sensitive to our changes in priors. 
+
+```{r fig.cap = "Posterior predictive check for the linear model with new priors", echo=FALSE}
+brms::pp_check(fit1a)
+brms::pp_check(fit1b)
 ```
 
 
-```{r, check1new, fig.cap = "Posterior predictive check for the linear model with new priors", echo=FALSE}
-brms::pp_check(fit1_1)
-```
+# Hierarchical model
 
-# Non-linear model
+The structure of our analysis with the non-linear model is similar to that of the linear model. We first fit the model, then report convergence diagnostics, and posterior predictive checks. We use the same priors for the hierarchical model as for the non-hierarchical one.
 
-The structure of our analysis with the non-linear model is similar to that of the linear model. We first fit the model, then report convergence diagnostics, posterior predictive checks, and sensitivity analysis. 
+## MCMC inference for the hierarchical model
 
-## MCMC inference
-Non-linear models require the bf() around the model specification together with 'nl = TRUE'. The parameters of the model must be specified by b ~ 1 for example, or b ~ 1 + (1|z) if the parameter b varies in groups z.
+The MCMC was run by the defaults of the `brm()` function: 4 chains with 2000 iterations and warmup constituting 50 % of the draws. However, the default adaptive step size of 0.8 was changed to +.9, because the runs with the default resulted in divergent transitions.
+
 ```{r}
 fit2 =  brms::brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
                    b1 ~ 1, 
@@ -386,56 +371,121 @@ fit2 =  brms::brm(bf(Price ~ b1*Size + b2*Age + b3*Age^2 + b4,
 :::: {.content-hidden when-format="pdf"}
 ::: {.callout-warning collapse=true}
 
-Hide the summary in the pdf because it looks hard to follow.
 ```{r}
 fit2 <- readRDS("fit2.rds")
 ```
 
 ```{r}
 saveRDS(fit2, file="fit2.rds")
-summary(fit2)
 ```
 :::: 
 ::: 
 
 ## Convergence diagnostic 
 
-To obtain summaries of the fitted model, we again apply function `summary()` in `brms` package. 
+Below is the summary of the fitted hierarchical model. Again, we are checking $\hat{R}$ values and effective sample sizes to diagnose convergence:
 
-```{r}
-plot(brms::conditional_effects(fit2), points = TRUE, ask=FALSE)
+```{r echo=FALSE}
+summary(fit2)
 ```
+
+As shown in the summary above, the $\hat{R}$ value is under 1.01 for every parameter, effective sample sizes around 2000 and there were no divergent transitions. The $\hat{R}$'s imply convergence of the chains and the effective sample sizes seem sufficient.
+
+Similarly, by using function `check_hmc_diagnostics()`, we can verify that none of 4000 iterations saturated the maximum tree depth of 10.
+
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=true}
+```{r echo=FALSE}
+rstan::check_hmc_diagnostics(fit2$fit)
+```
+:::: 
+:::
+
 
 
 ## Posterior predictive check
+Visually (Figure 12-16) we can see that the hierarchical model gives a fairly similar result in capturing the distribution of house prices as does the non-hierarchical model, i.e., the distribution matches fairly well, but doesn't capture some areas of the distribution (especially for the houses with below-average prices).
 
-```{r}
+```{r, fig.height=3, fig.width=5, fig.cap="Conditional effects of housing attributes on housing price.", echo=FALSE}
+plot(brms::conditional_effects(fit2), points = TRUE)
+```
+
+```{r, fig.height=6, fig.width=8, fig.cap="Hierarchical model: Four MCMC chains and posterior distributions for each parameter."}
+plot(fit2) # chain mixing & posterior distributions for parameters
+```
+
+
+```{r, check2, fig.cap = "Posterior predictive check for the hierarchical model", echo=FALSE}
 brms::pp_check(fit2)
 ```
+
 ## Sensitivity analysis
+Sensitivity analysis for the hierarchical model was skipped because the sensitivities of the parameters on the selected priors ought to match those of the linear model. In addition, there are too many parameters to render any visual presentation of the results a bore, and the hierarchical model doesn't seem to be that much better that there would be any utility in completing sensitivity analysis for it.
 
 
 # Model comparison 
 
-## Model comparison using LOO-CV
+We start our model comparison by using leave-one-out cross-validation (LOO-CV). The better model has higher `elpd_loo` (better predictive model for observed data) and higher `p_loo` values (more complex model). 
 
-We start our model comparison by using leave-one-out cross-validation. For the linear model, the 
 
-```{r}
-brms::loo(fit1)
+Below is the leave-one-out cross-validation for the non-hierarchical linear model by using the `loo()` function:
+```{r echo=FALSE}
+loo1 <- loo(fit1)    
+loo1
 ```
 
-```{r}
-brms::loo(fit2)
+Next, we apply the same `loo()` function for the hierarchical model:
+```{r echo=FALSE}
+loo2 <- loo(fit2) 
+loo2
 ```
+
+
+`elpd_loo` values of two models are not too significantly different. Comparing the models via LOO-CV, we see that the hierarchical model isn't much better than the non-hierarchical one. `p_loo` values of the hierarchical model are significantly higher which means that it is much more complex than the non-hierarchical model.
+
+```{r}
+loo_compare(loo1, loo2)
+```
+
+:::: {.content-hidden when-format="pdf"}
+::: {.callout-warning collapse=false}
+## Model comparison using RMSE
+
+The lower the RMSE (Root-mean-square error), the better the model. The best model has the lowest RMSE, while the linear regression model (the worst model) has the highest RMSE.
+
+The below function takes a brms fit object and computes either the [root-mean-square error (RMSE)](https://en.wikipedia.org/wiki/Root-mean-square_deviation) or the PSIS-LOO-RMSE, i.e. the RMSE using LOO-CV estimated using PSIS-LOO.
+```{r}
+# Compute RMSE or LOO-RMSE
+rmse <- function(fit, use_loo=FALSE){
+  mean_y_pred <- if(use_loo){
+    brms::loo_predict(fit)
+  }else{
+    colMeans(brms::posterior_predict(fit)) 
+  }
+  sqrt(mean(
+    (mean_y_pred - brms::get_y(fit))^2
+  ))
+}
+```
+
+
+
+```{r}
+rmse(fit1); rmse(fit2)
+```
+:::
+::::
 
 # Discussion
 
+The linear model gives a fairly good model of the Espoo house price data, but it doesn't capture some aspects of the distribution, especially the positivity of house price. The shortcomings of the linear model don't seem to be ameliorated by switching to a hierarchical model with the average income per postal area as the grouping variable, i.e., the non-linearity present in the aggregate data isn't explained by heterogeneity between postal areas' average income. As an experiment, a non-linear and non-hierarchical model could be tested to see if it gives better results.
 
 # Conclusion
 
+Although the hierarchical model is more complex, it doesn't provide much added benefit in comparison to the non-hierarchical one. The linear model in itself is a fairly good model given that it is simple and fast to fit and adjust. However, a non-linear model would be a good experiment for further analysis and might give better results.
+
 # Self-reflection
-We learned how to form a Bayesian analysis problem. We revised the linear and hierarchical models covered in this course. We also learned how to structure the report to make it readable and easy to follow.
+We learned how to form a Bayesian analysis problem. We revised the non-hierarchical and hierarchical models covered in this course. We also learned how to manage time, structure the report to make it readable and easy to follow.
 
 # References
 
