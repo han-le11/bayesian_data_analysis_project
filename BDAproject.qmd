@@ -67,7 +67,7 @@ The structure of the report is as follows. Section 2 describes the data and the 
 ## General description
 The housing price dataset is obtained from Asuntojen Hintatiedot @asunto, which can be translated into Price Information of Housing. This dataset can be viewed and downloaded from [here](https://drive.google.com/file/d/1VMD4fkEzAcP71FXoBq6P5i0Rme04AugG/view?usp=sharing). At the time of conducting the analysis and making this report, to our knowledge, there are no other existing analyses with this housing dataset.
 
-In the original dataset, there are 901 observations and 10 variables. Each variable contains certain information about a house. However, to investigate the effect of house's age on its price, we add a variable called $Age = 2024 - ProductionYear$ to compute the age of a house based on the year it was produced. 
+In the original dataset, there are 901 observations and 10 variables. Each variable contains certain information about a house. We add a variable called $Age = 2024 - ProductionYear$ to compute the age of a house based on the year it was produced and to investigate the effect of house's age on its price. 
 
 
 :::: {.content-hidden when-format="pdf"}
@@ -150,7 +150,7 @@ ggplot(data = HouseData %>% filter(
   )
 ```
 
-Comment: This plot for each postal code is a bit confusing. I'm not sure if it provides much info?
+Comment: This plot for each postal code is a bit confusing and hard to read?
 ```{r}
 # plots for each postal code
 ggplot(data = HouseData %>% filter(
